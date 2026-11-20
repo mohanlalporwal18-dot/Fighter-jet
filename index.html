@@ -1,0 +1,144 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Temple Run Style Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+  />
+  <style>
+    /* Hide scrollbar for game container */
+    #gameContainer::-webkit-scrollbar {
+      display: none;
+    }
+    #gameContainer {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 flex flex-col items-center justify-center min-h-screen overflow-hidden select-none">
+  <div id="gameContainer" class="relative w-full max-w-md h-[600px] bg-gradient-to-b from-green-700 to-green-900 rounded-lg overflow-hidden shadow-2xl">
+    <!-- Background layers -->
+    <img
+      src="https://placehold.co/400x600/2f855a/ffffff?text=Jungle+Background+Layer+1"
+      alt="Lush jungle background with tall trees and dense foliage in shades of green and brown, creating a deep forest atmosphere"
+      class="absolute top-0 left-0 w-full h-full object-cover z-0"
+      draggable="false"
+    />
+    <img
+      src="https://placehold.co/400x600/276749/ffffff?text=Jungle+Background+Layer+2"
+      alt="Darker jungle background layer with silhouettes of trees and vines, adding depth to the forest scene"
+      class="absolute top-0 left-0 w-full h-full object-cover opacity-70 z-10"
+      draggable="false"
+    />
+
+    <!-- Path -->
+    <div id="path" class="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-64 h-[400px] bg-gradient-to-t from-yellow-400 via-yellow-300 to-yellow-200 rounded-t-3xl shadow-lg z-20 overflow-hidden">
+      <img
+        src="https://placehold.co/256x400/ca8a04/ffffff?text=Stone+Path"
+        alt="Stone path with cracked tiles and moss growing between stones, leading forward into the jungle"
+        class="w-full h-full object-cover"
+        draggable="false"
+      />
+    </div>
+
+    <!-- Runner -->
+    <img
+      id="runner"
+      src="https://placehold.co/64x96/ef4444/ffffff?text=Runner"
+      alt="Animated runner character wearing red clothes, running forward with dynamic pose"
+      class="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-16 h-24 z-30"
+      draggable="false"
+    />
+
+    <!-- Obstacles container -->
+    <div id="obstacles" class="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-64 h-[400px] z-25 pointer-events-none"></div>
+
+    <!-- Score and controls -->
+    <div class="absolute top-4 left-4 text-white text-lg font-bold z-40 select-none">
+      Score: <span id="score">0</span>
+    </div>
+
+    <div class="absolute top-4 right-4 flex space-x-4 z-40">
+      <button id="btnLeft" aria-label="Move Left" class="bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-full p-3 shadow-lg focus:outline-none focus:ring-2 focus:ring-green-400">
+        <i class="fas fa-arrow-left text-white text-xl"></i>
+      </button>
+      <button id="btnRight" aria-label="Move Right" class="bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-full p-3 shadow-lg focus:outline-none focus:ring-2 focus:ring-green-400">
+        <i class="fas fa-arrow-right text-white text-xl"></i>
+      </button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center space-y-6 text-white text-center p-6 z-50 hidden">
+      <h1 class="text-4xl font-extrabold">Game Over</h1>
+      <p class="text-xl">Your Score: <span id="finalScore">0</span></p>
+      <button id="restartBtn" class="bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg px-6 py-3 text-lg font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-red-400">
+        Restart
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const gameContainer = document.getElementById("gameContainer");
+      const runner = document.getElementById("runner");
+      const obstaclesContainer = document.getElementById("obstacles");
+      const scoreEl = document.getElementById("score");
+      const gameOverScreen = document.getElementById("gameOverScreen");
+      const finalScoreEl = document.getElementById("finalScore");
+      const restartBtn = document.getElementById("restartBtn");
+      const btnLeft = document.getElementById("btnLeft");
+      const btnRight = document.getElementById("btnRight");
+
+      // Game constants
+      const lanes = [0, 1, 2]; // 3 lanes: left(0), center(1), right(2)
+      const laneWidth = 64; // width of each lane in px (runner width)
+      const pathWidth = 256; // width of the path container
+      const runnerWidth = 64;
+      const runnerHeight = 96;
+      const pathHeight = 400;
+      const obstacleWidth = 64;
+      const obstacleHeight = 64;
+      const obstacleSpeed = 4; // pixels per frame
+      const obstacleSpawnInterval = 1500; // ms
+      const maxObstacles = 15;
+
+      // Game state
+      let runnerLane = 1; // start in center lane
+      let obstacles = [];
+      let score = 0;
+      let gameRunning = false;
+      let lastSpawnTime = 0;
+      let animationFrameId;
+
+      // Positions for lanes relative to path container left edge
+      // lane 0: left, lane 1: center, lane 2: right
+      const lanePositions = [
+        (pathWidth / 3) * 0 + (pathWidth / 3 - runnerWidth) / 2,
+        (pathWidth / 3) * 1 + (pathWidth / 3 - runnerWidth) / 2,
+        (pathWidth / 3) * 2 + (pathWidth / 3 - runnerWidth) / 2,
+      ];
+
+      // Set runner initial position
+      function updateRunnerPosition() {
+        // runner is positioned relative to path container left edge
+        runner.style.left = `calc(50% - ${pathWidth / 2}px + ${lanePositions[runnerLane]}px)`;
+      }
+
+      // Create an obstacle element
+      function createObstacle(lane, type) {
+        const obstacle = document.createElement("img");
+        obstacle.classList.add("absolute", "w-16", "h-16", "z-30");
+        obstacle.style.width = `${obstacleWidth}px`;
+        obstacle.style.height = `${obstacleHeight}px`;
+        obstacle.style.left = `${lanePositions[lane]}px`;
+        obstacle.style.bottom = `400px`; // start just above visible path container
+        obstacle.draggable = false;
+
+        // Choose obstacle image and alt text based on type
+        switch (type) {
+          case "rock":
+            obstacle.src =
